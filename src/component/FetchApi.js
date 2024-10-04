@@ -1,0 +1,1 @@
+export const FETCH_URL = "https://tracklog.live/api/v1/"
