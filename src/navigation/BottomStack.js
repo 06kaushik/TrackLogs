@@ -52,7 +52,7 @@ const BottomTabNavigator = () => {
             })}
         >
             <Tab.Screen name="Calls" component={CallScreen} />
-            <Tab.Screen name="History" component={HistoryScreen} />
+            {/* <Tab.Screen name="History" component={HistoryScreen} /> */}
             <Tab.Screen name="Contacts" component={ContactsScreen} />
         </Tab.Navigator>
     );

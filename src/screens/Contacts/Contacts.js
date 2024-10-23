@@ -9,11 +9,27 @@ import {
     Alert,
     TextInput,
     Image,
-    ActivityIndicator, // Import ActivityIndicator
+    ActivityIndicator,
 } from 'react-native';
 import Contacts from 'react-native-contacts';
 import ImmediatePhoneCall from 'react-native-immediate-phone-call';
 import images from "../../component/images";
+import { RealmProvider } from '@realm/react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Realm from 'realm';
+import moment from "moment";
+
+
+const CallDataSchema = {
+    name: 'CallData',
+    properties: {
+        _id: 'int',
+        phoneNumber: 'string',
+        dateTime: 'string',
+    },
+    primaryKey: '_id',
+};
+
 
 const ContactsScreen = ({ navigation }) => {
 
@@ -79,10 +95,51 @@ const ContactsScreen = ({ navigation }) => {
         }
     };
 
-    const handleCall = (phoneNumber) => {
+    const savePhoneNumberToStorage = async (number) => {
+        const dateTime = moment().format('DD-MMM-YYYY HH:mm:ss')
+        const realm = await Realm.open({ schema: [CallDataSchema] });
+
+        try {
+            // Generate a new ID for the call
+            const lastCall = realm.objects('CallData').sorted('_id', true)[0];
+            const newId = lastCall ? lastCall._id + 1 : 1;
+
+            // Save the call in Realm
+            realm.write(() => {
+                realm.create('CallData', {
+                    _id: newId,
+                    phoneNumber: number,
+                    dateTime: dateTime,
+                });
+            });
+
+            // Get existing data from AsyncStorage
+            const existingData = await AsyncStorage.getItem('realmDataoutgoing');
+            const existingCallData = existingData ? JSON.parse(existingData) : [];
+
+            // Check if the new call already exists based on _id
+            const isExisting = existingCallData.some(call => call._id === newId);
+
+            if (!isExisting) {
+                // Only save if the _id is not already in the stored data
+                await AsyncStorage.setItem('realmDataoutgoing', JSON.stringify([...existingCallData, { _id: newId, phoneNumber: number, dateTime: dateTime }]));
+            } else {
+                console.log('Call already exists in AsyncStorage with _id:', newId);
+            }
+
+            // ('Data saved in Realm:', callData);
+        } catch (error) {
+            console.error('Failed to save call data in Realm:', error);
+        } finally {
+            realm.close();
+        }
+    };
+
+    const handleCall = async (phoneNumber) => {
         console.log("Calling:", phoneNumber);
         if (phoneNumber) {
             ImmediatePhoneCall.immediatePhoneCall(phoneNumber);
+            await savePhoneNumberToStorage(phoneNumber);
         } else {
             Alert.alert("No phone number", "This contact does not have a phone number.");
         }
@@ -144,7 +201,15 @@ const ContactsScreen = ({ navigation }) => {
     );
 };
 
-export default ContactsScreen;
+const ContactScreenWrapper = ({ navigation }) => {
+    return (
+        <RealmProvider schema={[CallDataSchema]}>
+            <ContactsScreen navigation={navigation} />
+        </RealmProvider>
+    );
+};
+
+export default ContactScreenWrapper;
 
 const styles = StyleSheet.create({
     container: {

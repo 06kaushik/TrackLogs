@@ -1,14 +1,19 @@
 import React, { useState, useContext } from "react";
-import { Text, View, StyleSheet } from 'react-native';
+import { Text, View, StyleSheet, ToastAndroid, Image } from 'react-native';
 import { TextInput, Button } from 'react-native-paper';
 import { ContextApi } from "../../component/ContextApi";
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import images from "../../component/images";
 
 const Login = () => {
 
-    const [loginId, setLoginId] = useState('bikram@acadecraft.com');
-    const [password, setPassword] = useState('11223344');
+    // const [loginId, setLoginId] = useState('bikram@acadecraft.com');
+    // const [password, setPassword] = useState('11223344');
+    const [loginId, setLoginId] = useState('');
+    const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const { login } = useContext(ContextApi);
+
 
     const LoginEmail = async () => {
         try {
@@ -23,21 +28,23 @@ const Login = () => {
                 method: 'POST',
                 body: formData,
             };
+            console.log('')
             const response = await fetch('https://tracklog.live/api/v1/login', options);
             const result = await response.json();
-            console.log('Response from the login API:', result);
 
             if (response.ok && result.status === "Success") {
                 const user = result.data;
                 login(null, user);
-                console.log('Login successful:', user);
+                ToastAndroid.show('Successfully Login', ToastAndroid.SHORT);
+                const userData = { ...user, password };
+                await AsyncStorage.setItem('userData', JSON.stringify(userData));
             } else {
-                console.error('Login failed:', result.msg || 'Unknown error');
+                ToastAndroid.show('Login Failed, Check your Credentials', ToastAndroid.SHORT);
             }
-
             return result;
         } catch (error) {
-            console.error('Error logging in:', error);
+            ToastAndroid.show('Login Failed, Check your Credentials', ToastAndroid.SHORT);
+
             return null;
         }
     };
@@ -45,6 +52,7 @@ const Login = () => {
 
     return (
         <View style={styles.main}>
+            {/* <Image  source={images.tracklogo} style={{height:300,width:300,alignSelf:'center',marginBottom:20}}/> */}
             <Text style={styles.title}>Login</Text>
 
             <TextInput
@@ -104,5 +112,6 @@ const styles = StyleSheet.create({
     },
     button: {
         marginTop: 40,
+        backgroundColor: 'blue'
     },
 });

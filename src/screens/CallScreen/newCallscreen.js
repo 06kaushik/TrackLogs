@@ -22,7 +22,6 @@ const CallDataSchema = {
         _id: 'int',
         phoneNumber: 'string',
         dateTime: 'string',
-
     },
     primaryKey: '_id',
 };
@@ -30,30 +29,15 @@ const CallDataSchema = {
 const CallScreen = ({ navigation }) => {
 
     const [callLogs, setCallLogs] = useState([]);
-    //('call logs filteres', callLogs);
-
     const [permissionGranted, setPermissionGranted] = useState(false);
     const [calldataoutgoing, setCallDataOutgoing] = useState([]);
-    //('count of outgoing', typeof calldataoutgoing);
-
     const [outgoingCallsToday, setOutgoingCallsToday] = useState([]);
-
     const [incomingCount, setIncomingCount] = useState(0);
-    //('incoming count', typeof incomingCount);
-
     const [synccount, setSyncCount] = useState(0)
     const [clickedItems, setClickedItems] = useState([]);
     const [appState, setAppState] = useState(AppState.currentState);
     const [userdetail, setUserDetails] = useState({});
 
-
-    useEffect(() => {
-        setInterval(() => {
-            //('setinterval in every 5 sec');
-            getRealmAsynData()
-
-        }, 1000);
-    }, [])
 
 
 
@@ -81,7 +65,6 @@ const CallScreen = ({ navigation }) => {
 
     useEffect(() => {
         getUserInfo();
-        getRealmAsynData()
     }, []);
 
 
@@ -129,81 +112,46 @@ const CallScreen = ({ navigation }) => {
 
     const fetchCallLogs = async () => {
         try {
-            // Fetch raw call logs
-            const logs = await CallLogs.load(100);
-            //('Raw Call Logs:', logs);
-
-            // Open Realm and fetch saved data
+            const logs = await CallLogs.load(20); // Fetch the latest 5 call logs
             const realm = await Realm.open({ schema: [CallDataSchema] });
             const savedCallData = realm.objects('CallData');
-            //('Saved Realm Data:', savedCallData);
-
-            // Helper function to format dateTime to exclude seconds
-            const formatDateTime = (dateTime) => {
-                return moment(dateTime).format('DD-MMM-YYYY HH:mm'); // Format to exclude seconds
-            };
-
-            // Filter call logs based on the criteria
-            const filteredLogs = logs.filter(log => {
+            const filteredLogs = logs.filter((log) => {
                 if (log.type === 'INCOMING') {
-                    // Always return incoming calls
                     return true;
                 } else if (log.type === 'OUTGOING') {
-                    // Format the log's dateTime to compare
-                    const logFormatted = formatDateTime(log.dateTime);
-                    //(`Log Formatted (OUTGOING): ${logFormatted}`);
-
-                    const matched = savedCallData.some(savedCall => {
-                        // Format the saved call's dateTime to compare
-                        const savedFormatted = formatDateTime(savedCall.dateTime);
-                        //(`Comparing log (${logFormatted}) with saved (${savedFormatted})`);
-
-                        // Compare formatted dateTimes
-                        return logFormatted === savedFormatted;
-                    });
-
-                    return matched; // Return true if there's a match in Realm data
+                    return savedCallData.some(savedCall => savedCall.dateTime === log.dateTime);
                 }
                 return false;
             });
-
-            //('Filtered Data:', filteredLogs);
-
-            // Update state with the filtered call logs
             setCallLogs(filteredLogs);
-            filterOutgoingCalls(filteredLogs);
-
-            // Close the Realm instance after use
+            filterOutgoingCalls(filteredLogs)
             realm.close();
-        } catch (error) {
-            console.error('Error in fetchCallLogs:', error);
+        } catch (e) {
+            console.error('fetchCallLogs function error', e);
         }
     };
 
-
     const savePhoneNumberToStorage = async (number) => {
-        // const dateTime = moment().format('MMM DD, YYYY h:mm:ss A');
-        const dateTime = moment().format('DD-MMM-YYYY HH:mm:ss')
-        //('datetimee', dateTime);
-
+        const timestamp = moment().format('MMM DD, YYYY h:mm:ss A');
         const realm = await Realm.open({ schema: [CallDataSchema] });
+
         try {
             const lastCall = realm.objects('CallData').sorted('_id', true)[0];
             const newId = lastCall ? lastCall._id + 1 : 1;
+
             realm.write(() => {
                 realm.create('CallData', {
                     _id: newId,
                     phoneNumber: number,
-                    dateTime: dateTime,
+                    dateTime: timestamp,
                 });
             });
-            const existingData = await AsyncStorage.getItem('realmDataoutgoing');
-            const existingCallData = existingData ? JSON.parse(existingData) : [];
-            const isExisting = existingCallData.some(call => call._id === newId);
-            if (!isExisting) {
-                await AsyncStorage.setItem('realmDataoutgoing', JSON.stringify([...existingCallData, { _id: newId, phoneNumber: number, dateTime: dateTime }]));
-            } else {
-            }
+
+            const callData = realm.objects('CallData');
+
+            setCallDataOutgoing(callData);
+
+            console.log('Data saved in Realm:', callData);
         } catch (error) {
             console.error('Failed to save call data in Realm:', error);
         } finally {
@@ -212,28 +160,13 @@ const CallScreen = ({ navigation }) => {
     };
 
 
-    const getRealmAsynData = async () => {
-        const data = await AsyncStorage.getItem('realmDataoutgoing');
-        // //('data of realm in async', data);
-        if (data) {
-            const parsedData = JSON.parse(data);
-            setCallDataOutgoing(parsedData.length);
-        } else {
-            setCallDataOutgoing(0); // Set to 0 if no data found
-        }
-    };
-
     const filterOutgoingCalls = (logs) => {
-        // //('filteroutgoing callsssss', logs);
-
         const today = moment().startOf('day');
         const filteredOutgoingCalls = logs.filter(log => {
-            const logDate = moment(log.dateTime, 'DD-MMM-YYYY HH:mm:ss');
-            //('>>>>>>>>>logDate', logDate);
-
+            const logDate = moment(log.dateTime, 'MMM D, YYYY h:mm:ss A');
             return log.type === 'OUTGOING' && logDate.isSame(today, 'day');
         });
-        //('Filtered Outgoing Calls:>>>>aat the end of the function', filteredOutgoingCalls);
+        console.log('Filtered Outgoing Calls:');
         setOutgoingCallsToday(filteredOutgoingCalls);
     };
 
@@ -242,7 +175,7 @@ const CallScreen = ({ navigation }) => {
         setIncomingCount(prevCount => prevCount + 1);
         setOutgoingCallsToday(prevCalls => {
             const updatedCalls = [...prevCalls, incomingCall];
-            //('Updated Calls Before Storing:', updatedCalls);
+            console.log('Updated Calls Before Storing:');
             storeFinalData(updatedCalls);
             fetchStoredData()
             return updatedCalls;
@@ -253,6 +186,7 @@ const CallScreen = ({ navigation }) => {
     const storeFinalData = async (data) => {
         try {
             await AsyncStorage.setItem('finaldata', JSON.stringify(data));
+            console.log('Data stored successfully:'); // Log stored data
         } catch (error) {
             console.error('Error storing data:', error);
         }
@@ -263,9 +197,8 @@ const CallScreen = ({ navigation }) => {
             const storedData = await AsyncStorage.getItem('finaldata');
             if (storedData) {
                 const parsedData = JSON.parse(storedData);
-                // //('Fetched Data from AsyncStorage:', parsedData);
+                console.log('Fetched Data from AsyncStorage:', parsedData);
                 const uniqueData = Array.from(new Map(parsedData.map(item => [item.timestamp, item])).values());
-                console.log('uniqu merged data', uniqueData);
                 setSyncCount(uniqueData.length);
                 setOutgoingCallsToday(uniqueData);
             }
@@ -275,17 +208,13 @@ const CallScreen = ({ navigation }) => {
     };
 
     const syncCallLogs = async () => {
-        // Log outgoing calls before checking counts
-        //('Outgoing Calls Before Sync:', outgoingCallsToday);
-
-        // Check if there are any incoming or outgoing call logs to sync
-        if (calldataoutgoing === 0) {
-            Alert.alert('No Data', 'There are no outgoing call logs to sync');
+        if (synccount === 0 || undefined) {
+            Alert.alert('No Data', 'There are no call logs to sync');
             return;
         }
 
         try {
-            // Sync each outgoing call log to the server
+            // Sync each call log to the server
             const response = await Promise.all(outgoingCallsToday.map(async (log) => {
                 const syncData = {
                     user_id: userdetail?.id,
@@ -300,26 +229,34 @@ const CallScreen = ({ navigation }) => {
                     company_id: userdetail?.company_id,
                 };
 
-                // Log the sync data for debugging
-                //('Sync Data:', syncData);
-                const apiResponse = await SyncData_API(syncData);
-                //('API Response:', apiResponse); // Log the response from the API
-
-                return apiResponse; // Return the API response to check later
+                console.log('response from the data to sync', syncData);
+                return await SyncData_API(syncData);
             }));
 
             // Check if all call logs were successfully synced
-            const allSuccess = response.every(res => res.success); // Ensure response has a 'success' property
+            const allSuccess = response.every(res => res.success);
             if (allSuccess) {
                 Alert.alert('Success', 'Call logs synced successfully');
+
+                // Clear AsyncStorage after successful sync
+                await AsyncStorage.removeItem('finaldata');
+                console.log('AsyncStorage cleared');
+
+                // Clear Realm database
+                const realm = await Realm.open({ schema: [CallDataSchema] });
+                realm.write(() => {
+                    const allCalls = realm.objects('CallData');
+                    realm.delete(allCalls);  // Deletes all CallData records from Realm
+                });
+                realm.close();
+                console.log('Realm database cleared');
+
+                // Reset the sync count
                 setSyncCount(0);
-                setCallDataOutgoing(0);
-                setIncomingCount(0);
                 setOutgoingCallsToday([]); // Clear outgoing call logs
             } else {
-                // Alert.alert('Warning', 'Some call logs failed to sync');
+                Alert.alert('Error', 'Some call logs failed to sync');
             }
-
         } catch (error) {
             console.error('Sync error:', error);
             Alert.alert('Error', 'Failed to sync call logs');
@@ -329,8 +266,6 @@ const CallScreen = ({ navigation }) => {
 
 
     const SyncData_API = async (syncData) => {
-        //('in syndata apiiii');
-
         try {
             let options = {
                 headers: {
@@ -352,26 +287,10 @@ const CallScreen = ({ navigation }) => {
 
             const response = await fetch(syncDataApi, options);
             const data = await response.json();
-            //('response from the data ', data);
-            // Clear Realm database
-            // const realm = await Realm.open({ schema: [CallDataSchema] });
-            // realm.write(() => {
-            //     const allCalls = realm.objects('CallData');
-            //     realm.delete(allCalls);  // Deletes all CallData records from Realm
-            // });
-            // realm.close();
-            // //('Realm database cleared');
+            console.log('response from the data ', data);
 
-            // Check remaining records in Realm
-            // await checkRealmRecords();
             ToastAndroid.show('Data Sync Successfully', ToastAndroid.SHORT);
             await AsyncStorage.removeItem('finaldata');
-            await AsyncStorage.removeItem('realmDataoutgoing');
-
-            setSyncCount(0);
-            setCallDataOutgoing(0)
-            setIncomingCount(0)
-            setOutgoingCallsToday([]); // Clear outgoing call logs
             return data;
         } catch (error) {
             console.error('Error from the sync data:', error);
@@ -379,8 +298,10 @@ const CallScreen = ({ navigation }) => {
         }
     };
 
-    const renderCallLog = ({ item }) => {
 
+
+
+    const renderCallLog = ({ item }) => {
 
         const handleCallPress = async (phoneNumber) => {
             try {
@@ -392,16 +313,9 @@ const CallScreen = ({ navigation }) => {
         };
 
         const isToday = (dateTime) => {
-            const today = moment().startOf('day'); // Start of today's date
-            let logDate = moment(dateTime, 'DD-MMM-YYYY HH:mm:ss', true); // First format
-            if (!logDate.isValid()) {
-                logDate = moment(dateTime, 'MMM D, YYYY h:mm:ss A', true); // Fallback format
-            }
-            if (!logDate.isValid()) {
-                console.warn('Invalid date format:', dateTime); // Log if neither format works
-                return false; // Consider it not today if parsing fails
-            }
-            return logDate.isSame(today, 'day'); // Check if logDate is the same as today
+            const today = moment().startOf('day');
+            const logDate = moment(dateTime, 'MMM D, YYYY h:mm:ss A'); // Adjust format as needed
+            return logDate.isSame(today, 'day');
         };
 
         return (
@@ -412,13 +326,11 @@ const CallScreen = ({ navigation }) => {
                             <Image style={{ height: 30, width: 30 }} source={images.profile} />
                         </View>
                         <View style={{ marginLeft: 16 }}>
-                            <Text style={{ fontSize: 14, fontWeight: 'bold', color: "black" }}>
-                                {item?.name ? item.name : 'Unknown'}
-                            </Text>
+                            <Text style={{ fontSize: 14, fontWeight: 'bold', color: "black" }}>{item?.name === '' ? 'Unknown' : item.name}</Text>
                             <Text style={{ fontSize: 14, color: 'black' }}>{item?.phoneNumber}</Text>
                             <Text style={{ fontSize: 12, color: 'grey' }}>{item?.dateTime}</Text>
                         </View>
-                        {item?.type === 'INCOMING' && !clickedItems.includes(item.timestamp) ? (
+                        {item?.type === 'INCOMING' && isToday(item.dateTime) && !clickedItems.includes(item.timestamp) ? (
                             <TouchableOpacity onPress={() => handleIncomingCountIncrement(item)}>
                                 <Image source={images.plus} style={{ height: 20, width: 20 }} />
                             </TouchableOpacity>
@@ -447,28 +359,17 @@ const CallScreen = ({ navigation }) => {
                     </TouchableOpacity>
                     <Text style={styles.homeText}>Home</Text>
                 </View>
-                <TouchableOpacity
-                    onPress={() => {
-                        if ((calldataoutgoing + incomingCount) < 5) {
-                            Alert.alert(
-                                'Sync Error',
-                                'Both incoming and outgoing counts should be more than 5'
-                            );
-                        } else {
-                            syncCallLogs();
-                        }
-                    }}>
-                    <View style={styles.rightHeader}>
-                        <View style={styles.usyncContainer}>
+                <View style={styles.rightHeader}>
+                    <View style={styles.usyncContainer}>
+                        <TouchableOpacity onPress={() => syncCallLogs()}>
                             <Text style={styles.usyncText}>Usync</Text>
-                            <View style={styles.counterContainer}>
-                                <Text style={styles.counterText}>{calldataoutgoing + incomingCount}</Text>
-                            </View>
+                        </TouchableOpacity>
+                        <View style={styles.counterContainer}>
+                            <Text style={styles.counterText}>{synccount}</Text>
                         </View>
-                        <Image source={images.refresh} style={styles.icon} />
                     </View>
-                </TouchableOpacity>
-
+                    <Image source={images.refresh} style={styles.icon} />
+                </View>
             </View>
             <View style={styles.line} />
 

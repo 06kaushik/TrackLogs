@@ -1,31 +1,30 @@
 import React, { useState } from "react";
-import { Text, View, StyleSheet, Image, TouchableOpacity, Linking, Alert } from 'react-native';
+import { Text, View, StyleSheet, Image, TouchableOpacity, Alert, Dimensions } from 'react-native';
 import images from "./images";
 import ImmediatePhoneCall from 'react-native-immediate-phone-call';
-import Realm from "realm";
-import Moment from "moment";
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import CallLogs from 'react-native-call-log'; // Import the call log library
+import moment from "moment";
+import Realm from 'realm';
+import { RealmProvider } from '@realm/react';
 
-const CallDetailsSchema = {
-    name: 'incoming_call_detailsTable',
-    primaryKey: 'id',
+const { width, height } = Dimensions.get('window');
+
+
+const CallDataSchema = {
+    name: 'CallData',
     properties: {
-        id: 'int',
-        phone: 'string',
-        name: 'string',
-        call_date: 'string',
-        start_date: 'string',
-        end_date: 'string',
-        is_sync: 'string',
-        type: 'string',
+        _id: 'int',
+        phoneNumber: 'string',
+        dateTime: 'string',
     },
+    primaryKey: '_id',
 };
 
+
 const DialScreen = ({ navigation }) => {
-
     const [typedNumber, setTypedNumber] = useState('');
-    const [name, setName] = useState('');
-    // const realm = Realm(); // Get the Realm instance
-
+    const [calldataoutgoing, setCallDataOutgoing] = useState([]);
 
     const dialPadNumbers = [
         ['1', '2', '3'],
@@ -34,69 +33,70 @@ const DialScreen = ({ navigation }) => {
         ['*', '0', '#']
     ];
 
-    // Function to handle number press
     const handleNumberPress = (number) => {
         setTypedNumber(typedNumber + number);
     };
 
-    // Function to handle delete (backspace)
     const handleDeletePress = () => {
         if (typedNumber.length > 0) {
             setTypedNumber(typedNumber.slice(0, -1));
         }
     };
 
-    const handleCallPress = () => {
+    // Function to save the phone number and timestamp in AsyncStorage
+    const savePhoneNumberToStorage = async (number) => {
+        const dateTime = moment().format('DD-MMM-YYYY HH:mm:ss')
+        const realm = await Realm.open({ schema: [CallDataSchema] });
+
+        try {
+            // Generate a new ID for the call
+            const lastCall = realm.objects('CallData').sorted('_id', true)[0];
+            const newId = lastCall ? lastCall._id + 1 : 1;
+
+            // Save the call in Realm
+            realm.write(() => {
+                realm.create('CallData', {
+                    _id: newId,
+                    phoneNumber: number,
+                    dateTime: dateTime,
+                });
+            });
+
+            // Get existing data from AsyncStorage
+            const existingData = await AsyncStorage.getItem('realmDataoutgoing');
+            const existingCallData = existingData ? JSON.parse(existingData) : [];
+
+            // Check if the new call already exists based on _id
+            const isExisting = existingCallData.some(call => call._id === newId);
+
+            if (!isExisting) {
+                // Only save if the _id is not already in the stored data
+                await AsyncStorage.setItem('realmDataoutgoing', JSON.stringify([...existingCallData, { _id: newId, phoneNumber: number, dateTime: dateTime }]));
+            } else {
+                console.log('Call already exists in AsyncStorage with _id:', newId);
+            }
+
+            // ('Data saved in Realm:', callData);
+        } catch (error) {
+            console.error('Failed to save call data in Realm:', error);
+        } finally {
+            realm.close();
+        }
+    };
+
+    const handleCallPress = async () => {
         if (typedNumber.length === 0) {
             Alert.alert('Error', 'Please enter a number to dial.');
         } else {
             try {
-                // Make the immediate phone call with the typed number
-                SaveData(typedNumber, '')
                 ImmediatePhoneCall.immediatePhoneCall(typedNumber);
+                await savePhoneNumberToStorage(typedNumber); // Save the dialed number and timestamp
             } catch (error) {
                 Alert.alert('Error', 'An error occurred while trying to make the call.');
                 console.error(error);
             }
         }
     };
-
-    const SaveData = async (contact, name) => {
-        try {
-            const realm = await Realm.open({
-                path: 'calling_detailsDatabase.realm',
-                schema: [CallDetailsSchema],
-            });
-
-            const outgoing_id = Math.round(Date.now());
-            console.log('Outgoing ID:', outgoing_id);
-
-            realm.write(() => {
-                const callRecord = {
-                    id: outgoing_id,
-                    phone: contact,
-                    name: name,
-                    call_date: Moment(new Date()).format('MMM D, YYYY HH:mm:ss'),
-                    start_date: "",
-                    end_date: "",
-                    is_sync: "0",
-                    type: "OUTGOING",
-                };
-
-                console.log('Call Data to be Saved:', callRecord);
-                realm.create('incoming_call_detailsTable', callRecord);
-            });
-
-            console.log('Data saved successfully');
-            Alert.alert('Success', 'Call data saved successfully');
-        } catch (error) {
-            console.error('Error saving data:', error);
-            Alert.alert('Error', 'An error occurred while saving the call data');
-        }
-    };
-
-
-
 
     return (
         <View style={styles.main}>
@@ -108,22 +108,19 @@ const DialScreen = ({ navigation }) => {
                 <Text style={styles.txt}>Dial</Text>
             </View>
 
-            {/* Number Display and Delete Button */}
             <View style={styles.displayContainer}>
                 <Text style={styles.displayText}>{typedNumber}</Text>
                 {typedNumber.length > 0 && (
                     <TouchableOpacity onPress={handleDeletePress}>
-                        {/* Wrap the delete (⌫) symbol inside a Text component */}
                         <Text style={styles.deleteText}>⌫</Text>
                     </TouchableOpacity>
                 )}
             </View>
-            {typedNumber.length > 0 ?
-                <View style={{ borderWidth: 0.5, width: '90%', borderColor: '#DDDDDD', top: 40 }} />
-                :
-                null
-            }
-            {/* Dial Pad */}
+
+            {typedNumber.length > 0 && (
+                <View style={styles.separator} />
+            )}
+
             <View style={styles.dialPad}>
                 {dialPadNumbers.map((row, rowIndex) => (
                     <View key={rowIndex} style={styles.dialPadRow}>
@@ -140,15 +137,22 @@ const DialScreen = ({ navigation }) => {
                 ))}
             </View>
 
-            {/* Call Button */}
-            <TouchableOpacity style={styles.callButton} onPress={() => handleCallPress()}>
+            <TouchableOpacity style={styles.callButton} onPress={handleCallPress}>
                 <Image source={images.call} style={styles.callIcon} />
             </TouchableOpacity>
         </View>
     );
 };
 
-export default DialScreen;
+const DialcreenWrapper = ({ navigation }) => {
+    return (
+        <RealmProvider schema={[CallDataSchema]}>
+            <DialScreen navigation={navigation} />
+        </RealmProvider>
+    );
+};
+
+export default DialcreenWrapper;
 
 const styles = StyleSheet.create({
     main: {
@@ -156,13 +160,13 @@ const styles = StyleSheet.create({
         backgroundColor: 'white',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingVertical: 30,
+        paddingVertical: height * 0.03, // Dynamically adjust based on screen height
     },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
         width: '100%',
-        paddingHorizontal: 20,
+        paddingHorizontal: width * 0.05, // Dynamic padding based on screen width
     },
     back: {
         height: 25,
@@ -177,13 +181,10 @@ const styles = StyleSheet.create({
     displayContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignSelf: 'center',
+        alignItems: 'center',
         width: '80%',
         paddingHorizontal: 10,
         paddingVertical: 20,
-        top: 120
-        // borderBottomWidth: 1,
-        // borderColor: '#ccc',
     },
     displayText: {
         fontSize: 30,
@@ -196,19 +197,28 @@ const styles = StyleSheet.create({
         color: 'black',
         paddingHorizontal: 10,
     },
+    separator: {
+        borderWidth: 0.5,
+        width: '90%',
+        borderColor: '#DDDDDD',
+        marginTop: 20,
+    },
     dialPad: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        top: 30
+        paddingVertical: height * 0.02,
     },
     dialPadRow: {
         flexDirection: 'row',
+        justifyContent: 'space-around',
+        width: '100%',
+        marginVertical: height * 0.01, // Adjust row margin based on height
     },
     dialPadButton: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
+        width: width * 0.18, // Adjust button size based on screen width
+        height: width * 0.18,
+        borderRadius: (width * 0.18) / 2,
         backgroundColor: '#e0e0e0',
         justifyContent: 'center',
         alignItems: 'center',
@@ -220,17 +230,17 @@ const styles = StyleSheet.create({
         color: 'black',
     },
     callButton: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
+        width: width * 0.18,
+        height: width * 0.18,
+        borderRadius: (width * 0.18) / 2,
         backgroundColor: 'green',
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: 20,
+        marginBottom: height * 0.02,
     },
     callIcon: {
-        width: 40,
-        height: 40,
+        width: width * 0.1,
+        height: width * 0.1,
         tintColor: 'white',
-    }
+    },
 });

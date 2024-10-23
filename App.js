@@ -1,5 +1,5 @@
 import React, { useEffect, useReducer, useMemo, useState } from 'react';
-import { StatusBar, ToastAndroid } from 'react-native';
+import { StatusBar, ToastAndroid, Alert } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
@@ -7,6 +7,11 @@ import AuthStack from './src/navigation/AuthStack';
 import HomeStack from './src/navigation/HomeStack';
 import { ContextApi } from './src/component/ContextApi';
 import { FETCH_URL } from "./src/component/FetchApi";
+import { check, request, PERMISSIONS, RESULTS } from 'react-native-permissions';
+
+
+
+
 const App = () => {
 
   const [userDetail, setDetail] = useState(null);
@@ -20,6 +25,35 @@ const App = () => {
     isLoading: true,
   };
 
+
+  useEffect(() => {
+    requestPermissions();
+  }, []);
+
+  const requestPermissions = async () => {
+    try {
+      // Check and request Call Log permission
+      const callLogStatus = await request(PERMISSIONS.ANDROID.READ_CALL_LOG);
+      if (callLogStatus !== RESULTS.GRANTED) {
+        // Alert.alert('Permission Required', 'Call log permission is required for app functionality.');
+      }
+
+      // Check and request Contacts permission
+      const contactsStatus = await request(PERMISSIONS.ANDROID.READ_CONTACTS);
+      if (contactsStatus !== RESULTS.GRANTED) {
+        // Alert.alert('Permission Required', 'Contacts permission is required for app functionality.');
+      }
+
+      // Check and request Phone permission
+      const phoneStatus = await request(PERMISSIONS.ANDROID.READ_PHONE_STATE);
+      if (phoneStatus !== RESULTS.GRANTED) {
+        // Alert.alert('Permission Required', 'Phone permission is required for app functionality.');
+      }
+
+    } catch (error) {
+      console.error('Permission request error: ', error);
+    }
+  };
 
   const authReducer = (prevState, action) => {
     switch (action.type) {
